@@ -167,6 +167,12 @@ class ChatViewModel(
                 loadConversation(finalConvId)
             } catch (e: CancellationException) {
                 // Handled gracefully in stopStreaming or by job cancellation
+            } catch (e: retrofit2.HttpException) {
+                val errorMsg = when (e.code()) {
+                    401 -> "Unauthorized (401): Please check your API key for ${currentState.selectedProvider.name} in Settings."
+                    else -> "HTTP Error ${e.code()}: ${e.message()}"
+                }
+                _uiState.update { it.copy(error = errorMsg, isStreaming = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message ?: "Unknown error", isStreaming = false) }
             } finally {

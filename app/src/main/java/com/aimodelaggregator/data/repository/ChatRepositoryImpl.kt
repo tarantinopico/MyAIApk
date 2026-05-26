@@ -21,6 +21,7 @@ import com.squareup.moshi.Moshi
 class ChatRepositoryImpl(
     private val groqApi: OpenAIApi,
     private val cerebrasApi: OpenAIApi,
+    private val geminiApi: OpenAIApi,
     private val providerSettingsRepository: ProviderSettingsRepository,
     private val conversationRepository: ConversationRepository,
     private val moshi: Moshi
@@ -130,7 +131,7 @@ class ChatRepositoryImpl(
         return when (provider) {
             ProviderType.GROQ -> groqApi
             ProviderType.CEREBRAS -> cerebrasApi
-            ProviderType.GEMINI -> throw UnsupportedOperationException("Gemini use not implement yet")
+            ProviderType.GEMINI -> geminiApi
         }
     }
 

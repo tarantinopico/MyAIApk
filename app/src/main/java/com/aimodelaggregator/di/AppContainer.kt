@@ -65,6 +65,15 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             .create(OpenAIApi::class.java)
     }
 
+    private val geminiApi: OpenAIApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://generativelanguage.googleapis.com/v1beta/openai/")
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(OpenAIApi::class.java)
+    }
+
     override val secureApiKeyStore: SecureApiKeyStore by lazy {
         SecureApiKeyStoreImpl(context)
     }
@@ -98,6 +107,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         ChatRepositoryImpl(
             groqApi = groqApi,
             cerebrasApi = cerebrasApi,
+            geminiApi = geminiApi,
             providerSettingsRepository = providerSettingsRepository,
             conversationRepository = conversationRepository,
             moshi = moshi
