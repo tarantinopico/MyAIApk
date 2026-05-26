@@ -9,11 +9,13 @@ import com.aimodelaggregator.domain.models.ProviderType
 import com.aimodelaggregator.domain.repository.ChatRepository
 import com.aimodelaggregator.domain.repository.ConversationRepository
 import com.aimodelaggregator.domain.repository.ModelRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 data class ChatUiState(
     val conversationId: Long? = null,
@@ -34,6 +36,8 @@ class ChatViewModel(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    private var streamingJob: Job? = null
 
     init {
         loadModels()
@@ -57,13 +61,15 @@ class ChatViewModel(
     }
 
     fun loadConversation(conversationId: Long) {
+        stopStreaming()
         viewModelScope.launch {
             val conv = conversationRepository.getConversationWithMessagesSync(conversationId)
             if (conv != null) {
                 _uiState.update {
                     it.copy(
                         conversationId = conv.conversation.id,
-                        messages = conv.messages
+                        messages = conv.messages,
+                        error = null
                     )
                 }
             }
@@ -71,7 +77,17 @@ class ChatViewModel(
     }
     
     fun createNewConversation() {
-        _uiState.update { it.copy(conversationId = null, messages = emptyList(), error = null) }
+        stopStreaming()
+        _uiState.update { it.copy(conversationId = null, messages = emptyList(), error = null, streamingContent = "") }
+    }
+
+    fun stopStreaming() {
+        streamingJob?.cancel()
+        streamingJob = null
+        if (_uiState.value.isStreaming) {
+            _uiState.update { it.copy(isStreaming = false, streamingContent = "") }
+            _uiState.value.conversationId?.let { loadConversation(it) }
+        }
     }
 
     fun sendMessage(content: String) {
@@ -82,7 +98,9 @@ class ChatViewModel(
             return
         }
 
-        viewModelScope.launch {
+        stopStreaming()
+
+        streamingJob = viewModelScope.launch {
             try {
                 var currentConvId = currentState.conversationId
                 if (currentConvId == null) {
@@ -112,8 +130,12 @@ class ChatViewModel(
 
                 _uiState.update { it.copy(isStreaming = false, streamingContent = "") }
                 loadConversation(finalConvId)
+            } catch (e: CancellationException) {
+                // Handled gracefully in stopStreaming or by job cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message ?: "Unknown error", isStreaming = false) }
+            } finally {
+                streamingJob = null
             }
         }
     }

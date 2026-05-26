@@ -1,24 +1,44 @@
 package com.aimodelaggregator.ui.chat
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,14 +56,31 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    LaunchedEffect(uiState.messages.size, uiState.streamingContent) {
-        if (uiState.messages.isNotEmpty() || uiState.isStreaming) {
-            listState.animateScrollToItem(uiState.messages.size + if (uiState.isStreaming) 1 else 0)
+    // Auto-scroll logic when new messages arrive or streaming content updates
+    val itemCount = uiState.messages.size + if (uiState.isStreaming) 1 else 0
+    LaunchedEffect(itemCount, uiState.streamingContent) {
+        if (itemCount > 0) {
+            // Only auto scroll if we are already securely at the bottom or if a new message was just created.
+            // For simplicity, let's always scroll down on new token if user is somewhat near bottom.
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            if (lastVisible >= itemCount - 3) {
+                listState.animateScrollToItem(itemCount - 1)
+            }
+        }
+    }
+
+    val showScrollToBottom by remember {
+        derivedStateOf {
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastIndex ->
+                lastIndex < itemCount - 3
+            } ?: false
         }
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = {
@@ -59,16 +96,39 @@ fun ChatScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                     titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                ),
+                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
             )
         },
         bottomBar = {
             ChatComposer(
                 isStreaming = uiState.isStreaming,
-                onSendMessage = { viewModel.sendMessage(it) }
+                onSendMessage = { viewModel.sendMessage(it) },
+                onStopStreaming = { viewModel.stopStreaming() }
             )
+        },
+        snackbarHost = { SnackbarHost(remember { SnackbarHostState() }) },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = showScrollToBottom,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
+            ) {
+                SmallFloatingActionButton(
+                    onClick = {
+                        scope.launch {
+                            if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(Icons.Default.ArrowDownward, contentDescription = "Scroll to bottom")
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -91,33 +151,73 @@ fun ChatScreen(
                 }
             }
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(uiState.messages, key = { it.id }) { msg ->
-                    ChatMessageItem(message = msg)
-                }
+            if (uiState.messages.isEmpty() && !uiState.isStreaming) {
+                EmptyChatIllustration(modifier = Modifier.weight(1f))
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
+                    items(uiState.messages, key = { it.id }) { msg ->
+                        ChatMessageItem(message = msg)
+                    }
 
-                if (uiState.isStreaming) {
-                    item {
-                        ChatMessageItem(
-                            message = ChatMessage(
-                                conversationId = uiState.conversationId ?: 0,
-                                role = MessageRole.ASSISTANT,
-                                content = uiState.streamingContent,
-                                createdAt = System.currentTimeMillis()
-                            ),
-                            isStreaming = true
-                        )
+                    if (uiState.isStreaming) {
+                        item(key = "streaming_indicator") {
+                            ChatMessageItem(
+                                message = ChatMessage(
+                                    conversationId = uiState.conversationId ?: 0,
+                                    role = MessageRole.ASSISTANT,
+                                    content = uiState.streamingContent,
+                                    createdAt = System.currentTimeMillis()
+                                ),
+                                isStreaming = true
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun EmptyChatIllustration(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Menu, // Placeholder
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(36.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            "How can I help you today?",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Select a provider and model to start chatting.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -135,22 +235,32 @@ fun ProviderModelDropdown(
         onExpandedChange = { expanded = it }
     ) {
         val display = if (selectedModel != null) {
-            "${selectedModel.provider.name} - ${selectedModel.displayName}"
+            "${selectedModel.provider.name} • ${selectedModel.displayName}"
         } else {
             "Select Model"
         }
 
-        OutlinedTextField(
-            value = display,
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(),
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                unfocusedBorderColor = Color.Transparent,
-                focusedBorderColor = Color.Transparent
-            )
-        )
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .menuAnchor()
+                .clickable { expanded = true }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = display,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            }
+        }
 
         ExposedDropdownMenu(
             expanded = expanded,
@@ -158,7 +268,12 @@ fun ProviderModelDropdown(
         ) {
             availableModels.forEach { model ->
                 DropdownMenuItem(
-                    text = { Text("${model.provider.name} - ${model.displayName}") },
+                    text = { 
+                        Column {
+                            Text(model.displayName, fontWeight = FontWeight.Bold)
+                            Text(model.provider.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
                     onClick = {
                         onModelSelected(model)
                         expanded = false
@@ -170,8 +285,53 @@ fun ProviderModelDropdown(
 }
 
 @Composable
+fun SimpleMarkdownText(text: String, isUser: Boolean, isStreaming: Boolean) {
+    val parts = text.split("```")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        parts.forEachIndexed { index, part ->
+            if (index % 2 == 0) {
+                // Regular text
+                if (part.isNotBlank() || (isStreaming && index == parts.lastIndex)) {
+                    val displayText = part.trim() + if (isStreaming && index == parts.lastIndex) " ⬤" else ""
+                    Text(
+                        text = displayText,
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp
+                    )
+                }
+            } else {
+                // Code block
+                val firstNewline = part.indexOf('\n')
+                val code = if (firstNewline != -1 && firstNewline < part.length - 1) {
+                    part.substring(firstNewline + 1)
+                } else {
+                    part
+                }.trim()
+
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(8.dp),
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = code + if (isStreaming && index == parts.lastIndex) " ⬤" else "",
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
     val isUser = message.role == MessageRole.USER
+    val context = LocalContext.current
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -190,28 +350,56 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
             Spacer(modifier = Modifier.width(12.dp))
         }
 
-        Box(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (isUser) 16.dp else 4.dp,
-                        bottomEnd = if (isUser) 4.dp else 16.dp
-                    )
-                )
-                .background(
-                    if (isUser) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant
-                )
-                .padding(16.dp)
+        Column(
+            modifier = Modifier.weight(1f, fill = false),
+            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
-            Text(
-                text = message.content + if (isStreaming) " ⬤" else "",
-                color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 16.sp
-            )
+            Box(
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 16.dp,
+                            bottomStart = if (isUser) 16.dp else 4.dp,
+                            bottomEnd = if (isUser) 4.dp else 16.dp
+                        )
+                    )
+                    .background(
+                        if (isUser) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                SelectionContainer {
+                    SimpleMarkdownText(
+                        text = message.content,
+                        isUser = isUser,
+                        isStreaming = isStreaming
+                    )
+                }
+            }
+            
+            if (!isUser && !isStreaming) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Copied Text", message.content))
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy message",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
         }
 
         if (isUser) {
@@ -223,7 +411,7 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
                     .background(MaterialTheme.colorScheme.tertiary),
                 contentAlignment = Alignment.Center
             ) {
-                Text("ME", color = MaterialTheme.colorScheme.onTertiary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("YOU", color = MaterialTheme.colorScheme.onTertiary, fontWeight = FontWeight.Bold, fontSize = 10.sp)
             }
         }
     }
@@ -232,25 +420,29 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
 @Composable
 fun ChatComposer(
     isStreaming: Boolean,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    onStopStreaming: () -> Unit
 ) {
     var textState by remember { mutableStateOf(TextFieldValue("")) }
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+        tonalElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 12.dp)
+                // Navigation bars padding is handled by Scaffold insets, 
+                // but just to be sure we do it here if needed.
+                // However Scaffold safeDrawing already applies to bottomBar, so we don't replicate it here.
                 .fillMaxWidth(),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(
                 value = textState,
                 onValueChange = { textState = it },
-                placeholder = { Text("Message...") },
+                placeholder = { Text("Message AI Aggregator...") },
                 modifier = Modifier.weight(1f),
                 maxLines = 5,
                 shape = RoundedCornerShape(24.dp),
@@ -262,28 +454,43 @@ fun ChatComposer(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            IconButton(
-                onClick = {
-                    if (textState.text.isNotBlank() && !isStreaming) {
-                        onSendMessage(textState.text)
-                        textState = TextFieldValue("")
-                    }
-                },
-                enabled = textState.text.isNotBlank() && !isStreaming,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (textState.text.isNotBlank() && !isStreaming) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant
+            if (isStreaming) {
+                IconButton(
+                    onClick = onStopStreaming,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop",
+                        tint = MaterialTheme.colorScheme.onError
                     )
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = if (textState.text.isNotBlank() && !isStreaming) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                }
+            } else {
+                val canSend = textState.text.isNotBlank()
+                IconButton(
+                    onClick = {
+                        if (canSend) {
+                            onSendMessage(textState.text)
+                            textState = TextFieldValue("")
+                        }
+                    },
+                    enabled = canSend,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
