@@ -14,6 +14,7 @@ interface ConversationRepository {
     suspend fun updateConversationTitle(id: Long, title: String)
     suspend fun deleteConversation(conversation: ChatConversation)
     suspend fun deleteConversation(id: Long)
+    suspend fun deleteAllConversations()
     suspend fun saveMessage(message: ChatMessage): Long
     suspend fun addMessage(message: ChatMessage): Long
     suspend fun updateMessage(message: ChatMessage)

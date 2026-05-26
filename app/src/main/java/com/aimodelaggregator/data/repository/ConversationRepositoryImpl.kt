@@ -54,6 +54,10 @@ class ConversationRepositoryImpl(
         }
     }
 
+    override suspend fun deleteAllConversations() {
+        conversationDao.deleteAllConversations()
+    }
+
     override suspend fun saveMessage(message: ChatMessage): Long {
         return messageDao.insertMessage(message.toEntity())
     }

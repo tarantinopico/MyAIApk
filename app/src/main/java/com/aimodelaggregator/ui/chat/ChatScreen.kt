@@ -28,6 +28,10 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -105,6 +109,8 @@ fun ChatScreen(
         bottomBar = {
             ChatComposer(
                 isStreaming = uiState.isStreaming,
+                draftMessage = uiState.draftMessage,
+                onDraftChange = { viewModel.updateDraft(it) },
                 onSendMessage = { viewModel.sendMessage(it) },
                 onStopStreaming = { viewModel.stopStreaming() }
             )
@@ -162,8 +168,18 @@ fun ChatScreen(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    items(uiState.messages, key = { it.id }) { msg ->
-                        ChatMessageItem(message = msg)
+                    val lastUserIndex = uiState.messages.indexOfLast { it.role == MessageRole.USER }
+                    items(
+                        count = uiState.messages.size,
+                        key = { uiState.messages[it].id }
+                    ) { index ->
+                        val msg = uiState.messages[index]
+                        ChatMessageItem(
+                            message = msg,
+                            isLastUserMessage = (index == lastUserIndex),
+                            onRetry = { viewModel.retryLastMessage() },
+                            onEdit = { viewModel.updateDraft(it) }
+                        )
                     }
 
                     if (uiState.isStreaming) {
@@ -188,35 +204,45 @@ fun ChatScreen(
 @Composable
 fun EmptyChatIllustration(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(72.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                .size(96.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.Menu, // Placeholder
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(36.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ChatBubbleOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
         Text(
-            "How can I help you today?",
-            style = MaterialTheme.typography.headlineSmall,
+            "Ready to assist",
+            style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
-            "Select a provider and model to start chatting.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            "Select a provider and model from the top to start a new conversation.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
         )
     }
 }
@@ -329,9 +355,17 @@ fun SimpleMarkdownText(text: String, isUser: Boolean, isStreaming: Boolean) {
 }
 
 @Composable
-fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
+fun ChatMessageItem(
+    message: ChatMessage,
+    isStreaming: Boolean = false,
+    isLastUserMessage: Boolean = false,
+    onRetry: () -> Unit = {},
+    onEdit: (String) -> Unit = {}
+) {
     val isUser = message.role == MessageRole.USER
     val context = LocalContext.current
+    
+    val timeString = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(message.createdAt))
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -379,11 +413,19 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
                 }
             }
             
-            if (!isUser && !isStreaming) {
+            if (!isStreaming) {
                 Row(
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Text(
+                        text = timeString,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    
                     IconButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -394,9 +436,35 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
                         Icon(
                             Icons.Default.ContentCopy,
                             contentDescription = "Copy message",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(14.dp)
                         )
+                    }
+
+                    if (isUser && isLastUserMessage) {
+                        IconButton(
+                            onClick = { onEdit(message.content) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit message",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    } else if (!isUser) {
+                        IconButton(
+                            onClick = onRetry,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Regenerate message",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -420,10 +488,20 @@ fun ChatMessageItem(message: ChatMessage, isStreaming: Boolean = false) {
 @Composable
 fun ChatComposer(
     isStreaming: Boolean,
+    draftMessage: String,
+    onDraftChange: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     onStopStreaming: () -> Unit
 ) {
-    var textState by remember { mutableStateOf(TextFieldValue("")) }
+    var textState by remember { mutableStateOf(TextFieldValue(draftMessage)) }
+
+    // Sync from upper layer only if it completely changes (like switching conversation). 
+    // Otherwise rely on textState.
+    LaunchedEffect(draftMessage) {
+        if (draftMessage != textState.text) {
+            textState = TextFieldValue(draftMessage)
+        }
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -433,15 +511,15 @@ fun ChatComposer(
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 12.dp)
-                // Navigation bars padding is handled by Scaffold insets, 
-                // but just to be sure we do it here if needed.
-                // However Scaffold safeDrawing already applies to bottomBar, so we don't replicate it here.
                 .fillMaxWidth(),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(
                 value = textState,
-                onValueChange = { textState = it },
+                onValueChange = { 
+                    textState = it
+                    onDraftChange(it.text) 
+                },
                 placeholder = { Text("Message AI Aggregator...") },
                 modifier = Modifier.weight(1f),
                 maxLines = 5,

@@ -30,7 +30,8 @@ object ViewModelFactory {
                 }
                 modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
                     SettingsViewModel(
-                        providerSettingsRepository = container.providerSettingsRepository
+                        providerSettingsRepository = container.providerSettingsRepository,
+                        conversationRepository = container.conversationRepository
                     ) as T
                 }
                 modelClass.isAssignableFrom(ModelManagementViewModel::class.java) -> {

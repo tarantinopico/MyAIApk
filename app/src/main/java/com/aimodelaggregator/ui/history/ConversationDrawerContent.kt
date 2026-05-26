@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -81,12 +83,17 @@ fun ConversationDrawerContent(
                     CircularProgressIndicator()
                 }
             } else if (uiState.conversations.isNotEmpty()) {
+                val sortedConversations = uiState.conversations.sortedWith(
+                    compareByDescending<com.aimodelaggregator.domain.models.ChatConversation> { it.isPinned }
+                        .thenByDescending { it.updatedAt }
+                )
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 12.dp)
                 ) {
-                    items(uiState.conversations, key = { it.id }) { conv ->
+                    items(sortedConversations, key = { it.id }) { conv ->
                         val date = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(conv.updatedAt))
+                        var expanded by remember { mutableStateOf(false) }
                         
                         ListItem(
                             headlineContent = { 
@@ -98,14 +105,39 @@ fun ConversationDrawerContent(
                                 ) 
                             },
                             supportingContent = { 
-                                Text("\${conv.provider.name} • \$date", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${conv.provider.name} • $date", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                             leadingContent = {
-                                Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                                if (conv.isPinned) {
+                                    Icon(Icons.Default.PushPin, contentDescription = "Pinned", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.6f))
+                                }
                             },
                             trailingContent = {
-                                IconButton(onClick = { deleteCandidateId = conv.id }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
+                                Box {
+                                    IconButton(onClick = { expanded = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                                    }
+                                    DropdownMenu(
+                                        expanded = expanded,
+                                        onDismissRequest = { expanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (conv.isPinned) "Unpin" else "Pin") },
+                                            onClick = {
+                                                conversationListViewModel.togglePin(conv)
+                                                expanded = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                            onClick = {
+                                                deleteCandidateId = conv.id
+                                                expanded = false
+                                            }
+                                        )
+                                    }
                                 }
                             },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

@@ -35,4 +35,16 @@ class ConversationListViewModel(
             conversationRepository.deleteConversation(id)
         }
     }
+
+    fun togglePin(conversation: ChatConversation) {
+        viewModelScope.launch {
+            conversationRepository.updateConversation(conversation.copy(isPinned = !conversation.isPinned))
+        }
+    }
+
+    fun toggleArchive(conversation: ChatConversation) {
+        viewModelScope.launch {
+            conversationRepository.updateConversation(conversation.copy(isArchived = !conversation.isArchived))
+        }
+    }
 }

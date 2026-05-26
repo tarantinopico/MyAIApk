@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 data class ChatUiState(
     val conversationId: Long? = null,
@@ -25,7 +26,8 @@ data class ChatUiState(
     val error: String? = null,
     val selectedProvider: ProviderType = ProviderType.GROQ,
     val selectedModel: ProviderModel? = null,
-    val availableModels: List<ProviderModel> = emptyList()
+    val availableModels: List<ProviderModel> = emptyList(),
+    val draftMessage: String = ""
 )
 
 class ChatViewModel(
@@ -69,7 +71,8 @@ class ChatViewModel(
                     it.copy(
                         conversationId = conv.conversation.id,
                         messages = conv.messages,
-                        error = null
+                        error = null,
+                        draftMessage = conv.conversation.draftMessage ?: ""
                     )
                 }
             }
@@ -78,7 +81,7 @@ class ChatViewModel(
     
     fun createNewConversation() {
         stopStreaming()
-        _uiState.update { it.copy(conversationId = null, messages = emptyList(), error = null, streamingContent = "") }
+        _uiState.update { it.copy(conversationId = null, messages = emptyList(), error = null, streamingContent = "", draftMessage = "") }
     }
 
     fun stopStreaming() {
@@ -87,6 +90,38 @@ class ChatViewModel(
         if (_uiState.value.isStreaming) {
             _uiState.update { it.copy(isStreaming = false, streamingContent = "") }
             _uiState.value.conversationId?.let { loadConversation(it) }
+        }
+    }
+
+    fun retryLastMessage() {
+        val currentState = _uiState.value
+        if (currentState.isStreaming) return
+        
+        val lastUserIndex = currentState.messages.indexOfLast { it.role == com.aimodelaggregator.domain.models.MessageRole.USER }
+        if (lastUserIndex == -1) return
+        
+        val lastUserMessage = currentState.messages[lastUserIndex]
+        
+        // Remove or ignore following assistant messages in UI for a clean look, 
+        // but technically if we just send again it will append.
+        sendMessage(lastUserMessage.content)
+    }
+
+    private var draftSaveJob: Job? = null
+
+    fun updateDraft(content: String) {
+        _uiState.update { it.copy(draftMessage = content) }
+        val convId = _uiState.value.conversationId
+        if (convId != null) {
+            draftSaveJob?.cancel()
+            draftSaveJob = viewModelScope.launch {
+                delay(500)
+                val conv = conversationRepository.getConversationWithMessagesSync(convId)
+                if (conv != null) {
+                    val updated = conv.conversation.copy(draftMessage = content)
+                    conversationRepository.updateConversation(updated)
+                }
+            }
         }
     }
 
@@ -117,7 +152,7 @@ class ChatViewModel(
                 
                 val finalConvId = currentConvId!!
 
-                _uiState.update { it.copy(isStreaming = true, streamingContent = "", error = null) }
+                _uiState.update { it.copy(isStreaming = true, streamingContent = "", error = null, draftMessage = "") }
 
                 chatRepository.sendMessageStream(
                     conversationId = finalConvId,

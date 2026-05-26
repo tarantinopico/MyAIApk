@@ -35,7 +35,10 @@ fun ConversationEntity.toDomain() = ChatConversation(
     provider = provider,
     modelId = modelId,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    isPinned = isPinned,
+    isArchived = isArchived,
+    draftMessage = draftMessage
 )
 
 fun ChatConversation.toEntity() = ConversationEntity(
@@ -44,7 +47,10 @@ fun ChatConversation.toEntity() = ConversationEntity(
     provider = provider,
     modelId = modelId,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    isPinned = isPinned,
+    isArchived = isArchived,
+    draftMessage = draftMessage
 )
 
 fun MessageEntity.toDomain() = ChatMessage(

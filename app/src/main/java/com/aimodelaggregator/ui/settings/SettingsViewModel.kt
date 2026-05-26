@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aimodelaggregator.domain.models.ProviderType
 import com.aimodelaggregator.domain.repository.ProviderSettingsRepository
+import com.aimodelaggregator.domain.repository.ConversationRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,8 @@ data class SettingsUiState(
 )
 
 class SettingsViewModel(
-    private val providerSettingsRepository: ProviderSettingsRepository
+    private val providerSettingsRepository: ProviderSettingsRepository,
+    private val conversationRepository: ConversationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -50,6 +52,12 @@ class SettingsViewModel(
         viewModelScope.launch {
             providerSettingsRepository.saveApiKey(provider, "")
             checkKeys()
+        }
+    }
+
+    fun resetLocalData() {
+        viewModelScope.launch {
+            conversationRepository.deleteAllConversations()
         }
     }
 }
