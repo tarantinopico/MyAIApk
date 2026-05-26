@@ -40,4 +40,18 @@ class ModelRepositoryImpl(
     override suspend fun deleteModelsForProvider(provider: ProviderType) {
         modelDao.deleteModelsForProvider(provider)
     }
+
+    override suspend fun seedDefaultModels() {
+        if (modelDao.getModelCount() == 0) {
+            val defaults = listOf(
+                ProviderModel(provider = ProviderType.GROQ, modelId = "llama-3.1-8b-instant", displayName = "Llama 3.1 8B", isDefault = true),
+                ProviderModel(provider = ProviderType.GROQ, modelId = "llama-3.1-70b-versatile", displayName = "Llama 3.1 70B", isDefault = false),
+                ProviderModel(provider = ProviderType.GROQ, modelId = "llama-3.2-11b-vision-preview", displayName = "Llama 3.2 11B Vision", isDefault = false),
+                ProviderModel(provider = ProviderType.CEREBRAS, modelId = "llama3.1-8b", displayName = "Llama 3.1 8B", isDefault = true),
+                ProviderModel(provider = ProviderType.GEMINI, modelId = "gemini-2.5-flash", displayName = "Gemini 2.5 Flash", isDefault = true),
+                ProviderModel(provider = ProviderType.GEMINI, modelId = "gemini-2.0-pro-exp-02-05", displayName = "Gemini 2.0 Pro Exp", isDefault = false)
+            )
+            defaults.forEach { saveModel(it) }
+        }
+    }
 }

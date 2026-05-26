@@ -67,6 +67,14 @@ fun SettingsScreen(
                 onClear = { viewModel.clearApiKey(ProviderType.CEREBRAS) }
             )
 
+            ProviderApiKeySection(
+                providerName = "Gemini",
+                providerType = ProviderType.GEMINI,
+                isConfigured = uiState.geminiKeyExists,
+                onSave = { viewModel.saveApiKey(ProviderType.GEMINI, it) },
+                onClear = { viewModel.clearApiKey(ProviderType.GEMINI) }
+            )
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             Text("Advanced", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 4.dp))

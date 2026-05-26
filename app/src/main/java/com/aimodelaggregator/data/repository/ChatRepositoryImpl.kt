@@ -136,7 +136,10 @@ class ChatRepositoryImpl(
     }
 
     private suspend fun getAuthHeader(provider: ProviderType): String {
-        val key = providerSettingsRepository.getApiKey(provider) ?: throw Exception("API key for \$provider is missing")
+        val key = providerSettingsRepository.getApiKey(provider)
+        if (key.isNullOrBlank()) {
+            throw Exception("API key for \$provider is missing")
+        }
         return "Bearer \$key"
     }
 }

@@ -11,10 +11,19 @@ import androidx.compose.ui.Modifier
 import com.aimodelaggregator.ui.MainAppScaffold
 import com.aimodelaggregator.ui.theme.AIModelAggregatorTheme
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        
+        lifecycleScope.launch {
+            val appContainer = (application as AIModelAggregatorApplication).container
+            appContainer.modelRepository.seedDefaultModels()
+        }
+
         setContent {
             AIModelAggregatorTheme {
                 Surface(

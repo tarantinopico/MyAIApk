@@ -11,4 +11,5 @@ interface ModelRepository {
     suspend fun updateModel(model: ProviderModel)
     suspend fun deleteModel(model: ProviderModel)
     suspend fun deleteModelsForProvider(provider: ProviderType)
+    suspend fun seedDefaultModels()
 }

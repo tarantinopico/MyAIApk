@@ -50,7 +50,7 @@ class SettingsViewModel(
 
     fun clearApiKey(provider: ProviderType) {
         viewModelScope.launch {
-            providerSettingsRepository.saveApiKey(provider, "")
+            providerSettingsRepository.deleteApiKey(provider)
             checkKeys()
         }
     }

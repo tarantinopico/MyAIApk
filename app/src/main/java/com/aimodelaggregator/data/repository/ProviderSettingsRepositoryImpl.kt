@@ -9,11 +9,11 @@ class ProviderSettingsRepositoryImpl(
 ) : ProviderSettingsRepository {
 
     override fun saveApiKey(provider: ProviderType, apiKey: String) {
-        secureApiKeyStore.saveApiKey(provider, apiKey)
+        secureApiKeyStore.saveApiKey(provider, apiKey.trim())
     }
 
     override fun getApiKey(provider: ProviderType): String? {
-        return secureApiKeyStore.getApiKey(provider)
+        return secureApiKeyStore.getApiKey(provider)?.trim()
     }
 
     override fun deleteApiKey(provider: ProviderType) {
