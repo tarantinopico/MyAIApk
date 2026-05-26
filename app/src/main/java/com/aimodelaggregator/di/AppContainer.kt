@@ -74,7 +74,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             context.applicationContext,
             AppDatabase::class.java,
             "aimodel_aggregator_db"
-        ).build()
+        )
+        .fallbackToDestructiveMigration()
+        .build()
     }
 
     override val providerSettingsRepository: ProviderSettingsRepository by lazy {
